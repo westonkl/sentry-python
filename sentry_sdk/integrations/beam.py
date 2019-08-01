@@ -108,7 +108,7 @@ def _wrap_task_call(func):
 
 def _capture_exception(exc_info, hub):
     """
-    Send Beam exception to Sentry
+    Send Beam exception to Sentry.
     """
     integration = hub.get_integration(BeamIntegration)
     if integration:
@@ -142,6 +142,6 @@ def _wrap_generator_call(gen, client):
         try:
             yield next(gen)
         except StopIteration:
-            raise
+            break
         except Exception:
             raiseException(client)

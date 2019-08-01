@@ -153,8 +153,11 @@ def test_monkey_patch_signature(f, args, kwargs):
 class _OutputProcessor(OutputProcessor):
     def process_outputs(self, windowed_input_element, results):
         print(windowed_input_element)
-        for result in results:
-            assert result
+        try:
+            for result in results:
+                assert result
+        except StopIteration:
+            print("In here")
 
 
 @pytest.fixture
