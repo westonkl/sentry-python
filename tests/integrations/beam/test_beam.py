@@ -1,7 +1,6 @@
 import pytest
 import inspect
 
-pytest.importorskip("dill")
 pytest.importorskip("apache_beam")
 
 import dill
