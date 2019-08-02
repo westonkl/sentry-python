@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import sys
 import types
+import linecache
 from functools import wraps
 
 from sentry_sdk.hub import Hub
@@ -16,6 +17,18 @@ INSPECT_FUNC = "_inspect_{}"
 
 class BeamIntegration(Integration):
     identifier = "beam"
+
+    def __init__(self, send_source=False):
+        self.cached_source = None
+        self.cached_file = None
+        if send_source:
+            import __main__ as main
+
+            filename = main.__file__
+            if filename not in linecache.cache:
+                linecache.getlines(filename)
+            self.cached_source = linecache.cache[filename]
+            self.cached_file = filename
 
     @staticmethod
     def setup_once():
@@ -130,6 +143,7 @@ def raiseException(client):
         hub.bind_client(client)
     exc_info = sys.exc_info()
     with capture_internal_exceptions():
+        setup_file(hub)
         _capture_exception(exc_info, hub)
     reraise(*exc_info)
 
@@ -145,3 +159,12 @@ def _wrap_generator_call(gen, client):
             break
         except Exception:
             raiseException(client)
+
+
+def setup_file(hub):
+    integration = hub.get_integration(BeamIntegration)
+    if integration:
+        cached_source = integration.cached_source
+        cached_file = integration.cached_file
+        if cached_source is not None and cached_file not in linecache.cache:
+            linecache.cache[cached_file] = cached_source

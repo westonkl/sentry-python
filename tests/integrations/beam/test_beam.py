@@ -163,8 +163,11 @@ class _OutputProcessor(OutputProcessor):
 
 @pytest.fixture
 def init_beam(sentry_init):
-    def inner(fn):
-        sentry_init(default_integrations=False, integrations=[BeamIntegration()])
+    def inner(fn, send_source=False):
+        sentry_init(
+            default_integrations=False,
+            integrations=[BeamIntegration(send_source=send_source)],
+        )
         # Little hack to avoid having to run the whole pipeline.
         pardo = ParDo(fn)
         signature = pardo._signature
@@ -176,9 +179,19 @@ def init_beam(sentry_init):
     return inner
 
 
-@pytest.mark.parametrize("fn", [test_simple, test_callable, test_place_holder])
-def test_invoker_normal(init_beam, fn):
-    invoker = init_beam(fn)
+@pytest.mark.parametrize(
+    "fn,send_source",
+    [
+        [test_simple, False],
+        [test_simple, True],
+        [test_callable, False],
+        [test_callable, True],
+        [test_place_holder, False],
+        [test_place_holder, True]
+    ],
+)
+def test_invoker_normal(init_beam, fn, send_source):
+    invoker = init_beam(fn, send_source)
     print("Normal testing {} with {} invoker.".format(fn, invoker))
     windowed_value = WindowedValue(False, 0, [None])
     invoker.invoke_process(windowed_value)
