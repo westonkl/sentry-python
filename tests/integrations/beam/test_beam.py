@@ -4,6 +4,7 @@ import inspect
 pytest.importorskip("apache_beam")
 
 import dill
+
 from sentry_sdk.integrations.beam import (
     BeamIntegration,
     _wrap_task_call,

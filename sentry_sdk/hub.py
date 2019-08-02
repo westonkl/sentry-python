@@ -309,6 +309,7 @@ class Hub(with_metaclass(HubMeta)):  # type: ignore
     ):
         # type: (...) -> None
         """Binds a new client to the hub."""
+        new._update_options()
         top = self._stack[-1]
         self._stack[-1] = (new, top[1])
 
