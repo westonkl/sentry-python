@@ -163,7 +163,7 @@ class _Client(object):
                     ]
                 }
 
-        _update_options()
+        self._update_options()
         for key in "release", "environment", "server_name", "dist":
             if event.get(key) is None and self.options[key] is not None:  # type: ignore
                 event[key] = text_type(self.options[key]).strip()  # type: ignore
