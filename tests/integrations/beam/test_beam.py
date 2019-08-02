@@ -1,7 +1,7 @@
 import pytest
-import dill
 import inspect
 
+pytest.importorskip("dill")
 pytest.importorskip("apache_beam")
 
 from sentry_sdk.integrations.beam import (
