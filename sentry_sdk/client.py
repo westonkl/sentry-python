@@ -115,6 +115,17 @@ class _Client(object):
         """Returns the configured DSN as string."""
         return self.options["dsn"]
 
+    def _update_options(self):
+        rv = self.options
+        if rv["release"] is not None:
+            rv["release"] = os.environ.get("SENTRY_RELEASE")
+
+        if rv["environment"] is not None:
+            rv["environment"] = os.environ.get("SENTRY_ENVIRONMENT")
+
+        if rv["server_name"] is not None and hasattr(socket, "gethostname"):
+            rv["server_name"] = socket.gethostname()
+
     def _prepare_event(
         self,
         event,  # type: Event
@@ -152,6 +163,7 @@ class _Client(object):
                     ]
                 }
 
+        _update_options()
         for key in "release", "environment", "server_name", "dist":
             if event.get(key) is None and self.options[key] is not None:  # type: ignore
                 event[key] = text_type(self.options[key]).strip()  # type: ignore
