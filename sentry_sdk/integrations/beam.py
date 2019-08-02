@@ -141,9 +141,9 @@ def raiseException(client):
     hub = Hub.current
     if hub.client is None:
         hub.bind_client(client)
+    setup_file(hub)
     exc_info = sys.exc_info()
     with capture_internal_exceptions():
-        setup_file(hub)
         _capture_exception(exc_info, hub)
     reraise(*exc_info)
 
