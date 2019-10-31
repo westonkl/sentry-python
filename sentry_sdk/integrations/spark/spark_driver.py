@@ -1,3 +1,5 @@
+from functools import wraps
+
 from sentry_sdk import configure_scope
 from sentry_sdk.hub import Hub
 from sentry_sdk.integrations import Integration
@@ -11,6 +13,8 @@ if MYPY:
 
     from sentry_sdk._types import Event, Hint
 
+class SparkTransactionContainer():
+    sentry_spark_transaction = None
 
 class SparkIntegration(Integration):
     identifier = "spark"
@@ -18,8 +22,70 @@ class SparkIntegration(Integration):
     @staticmethod
     def setup_once():
         # type: () -> None
-        patch_spark_context_init()
+        spark_transaction_container = SparkTransactionContainer()
+        patch_spark_context_init(spark_transaction_container)
+        patch_spark_context_stop(spark_transaction_container)
+        patch_spark_for_spans()
 
+
+def wrap_span_around_func(obj, func_list, op):
+    # type: (List[str], bool) -> None
+    from pyspark import SparkContext
+
+    for name in func_list:
+        if not hasattr(obj, name):
+            continue
+
+        rdd_func = getattr(obj, name)
+
+        def wrap_rdd_func_call(func):
+            @wraps(func)
+            def _sentry_patched_func(self, *args, **kwargs):
+                # type: (RDD, *Any, **Any) -> Optional[Any]
+                sparkContext = SparkContext._active_spark_context
+
+                with Hub.current.start_span(op=op, description=name) as span:
+                    if sparkContext:
+                        span.set_tag("callsite", sparkContext.getLocalProperty("callSite.short"))
+                    return func(self, *args, **kwargs)
+            
+            return _sentry_patched_func
+
+        setattr(obj, name, wrap_rdd_func_call(rdd_func))
+
+def patch_spark_for_spans():
+    # type: () -> None
+    from pyspark import SparkContext
+    from pyspark import RDD
+
+    SPARK_FUNCS = frozenset(["emptyRDD", "parallelize", "wholeTextFiles", "binaryFiles", "binaryFiles", "sequenceFile", "newAPIHadoopFile", ])
+    RDD_ACTIONS = frozenset(["reduce", "collect", "first", "take", "takeSample", "takeOrdered", "saveAsTextFile", "saveAsSequenceFile", "saveAsObjectFile", "countByKey", "foreach"])
+    RDD_TRANSFORMATIONS = frozenset(["map", "filter", "flatMap", "sample", "union", "intersection", "distinct", "groupByKey", "reduceByKey", "aggregateByKey", "sortByKey", "join", "cogroup", "cartesian", "pipe", "coalesce", "repartition", "repartitionAndSortWithinPartitions"])
+
+    wrap_span_around_func(SparkContext, SPARK_FUNCS, "spark.createRDD")
+    wrap_span_around_func(RDD, RDD_ACTIONS, "spark.action")
+    wrap_span_around_func(RDD, RDD_TRANSFORMATIONS, "spark.transformation")
+
+
+def patch_spark_context_stop(spark_transaction_container):
+    # type: () -> None
+    from pyspark import SparkContext
+
+    spark_context_stop = SparkContext.stop
+
+    def _sentry_patched_spark_context_stop(self, *args, **kwargs):
+        if spark_transaction_container.span:
+            spark_transaction_container.span._tags.setdefault("app_name", self.appName)
+            spark_transaction_container.span._tags.setdefault("application_id", self.applicationId)
+
+        stop = spark_context_stop(self, *args, **kwargs)
+
+        if spark_transaction_container.span:
+            spark_transaction_container.span.__exit__(None, None, None)
+
+        return stop
+
+    SparkContext.stop = _sentry_patched_spark_context_stop
 
 def _set_app_properties():
     # type: () -> None
@@ -50,7 +116,7 @@ def _start_sentry_listener(sc):
     sc._jsc.sc().addSparkListener(listener)
 
 
-def patch_spark_context_init():
+def patch_spark_context_init(spark_transaction_container):
     # type: () -> None
     from pyspark import SparkContext
 
@@ -63,6 +129,8 @@ def patch_spark_context_init():
         if Hub.current.get_integration(SparkIntegration) is None:
             return init
 
+        spark_transaction_container.span = Hub.current.start_span(op="spark.job", transaction="{} - {}".format(self.appName, self.applicationId)).__enter__()
+
         _start_sentry_listener(self)
         _set_app_properties()
 
@@ -72,7 +140,7 @@ def patch_spark_context_init():
             def process_event(event, hint):
                 # type: (Event, Hint) -> Optional[Event]
                 with capture_internal_exceptions():
-                    if Hub.current.get_integration(SparkIntegration) is None:
+                    if Hub.current.get_integration(SparkIntegration) is None or not self._jsc:
                         return event
 
                     event.setdefault("user", {}).setdefault("id", self.sparkUser())

@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import sys
+from datetime import datetime
 
 from sentry_sdk import configure_scope
 from sentry_sdk.hub import Hub
