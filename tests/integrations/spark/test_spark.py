@@ -33,7 +33,9 @@ def test_set_app_properties():
         == sparkContext.applicationId
     )
 
+
 # SENTRY LISTENER
+
 
 def test_start_sentry_listener():
     sparkContext = SparkContext.getOrCreate()
@@ -197,7 +199,9 @@ def test_sentry_listener_on_stage_completed_failure(
     assert mockHub.kwargs["data"]["name"] == "run-job"
     assert mockHub.kwargs["data"]["reason"] == "failure-reason"
 
+
 # SPARK RDD
+
 
 def test_sentry_patch_rdd(sentry_init, capture_events, capture_exceptions):
     from pyspark.sql import SparkSession
@@ -208,14 +212,13 @@ def test_sentry_patch_rdd(sentry_init, capture_events, capture_exceptions):
     events = capture_events()
     exceptions = capture_exceptions()
 
-    spark = SparkSession\
-        .builder\
-        .appName("PythonPi")\
-        .getOrCreate()
-    
+    spark = SparkSession.builder.appName("PythonPi").getOrCreate()
+
     spark.sparkContext.parallelize(range(1, 10), 2).map(lambda x: x + 2).reduce(add)
 
-    import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
 
 
 ################

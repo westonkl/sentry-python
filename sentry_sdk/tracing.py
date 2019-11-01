@@ -314,7 +314,7 @@ class Span(object):
 
         if self._span_recorder is None:
             return None
-        
+
         print("LETS _span_recorder")
         print(self)
 
@@ -324,7 +324,7 @@ class Span(object):
             # If this has no transaction set we assume there's a parent
             # transaction for this span that would be flushed out eventually.
             return None
-        
+
         print("")
 
         client = hub.client
@@ -333,7 +333,7 @@ class Span(object):
             # We have no client and therefore nowhere to send this transaction
             # event.
             return None
-        
+
         print("LETS client")
 
         if not self.sampled:
