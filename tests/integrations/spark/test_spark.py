@@ -1,11 +1,8 @@
 import pytest
 import sys
-from sentry_sdk.integrations.spark.spark_driver import (
-    _set_app_properties,
-    _start_sentry_listener,
-    SentryListener,
-)
 
+from sentry_sdk.integrations.spark.spark_driver import _start_sentry_spark_listener, _start_sentry_streaming_query_listener
+from sentry_sdk.integrations.spark.listener import SentryListener, _set_app_properties
 from sentry_sdk.integrations.spark.spark_worker import SparkWorkerIntegration
 
 
@@ -13,6 +10,7 @@ pytest.importorskip("pyspark")
 pytest.importorskip("py4j")
 
 from pyspark import SparkContext
+from pyspark.sql import SparkSession
 
 from py4j.protocol import Py4JJavaError
 
@@ -32,17 +30,26 @@ def test_set_app_properties():
         == sparkContext.applicationId
     )
 
-
-def test_start_sentry_listener():
+def test_start_sentry_spark_listener():
     sparkContext = SparkContext.getOrCreate()
 
     gateway = sparkContext._gateway
     assert gateway._callback_server is None
 
-    _start_sentry_listener(sparkContext)
+    _start_sentry_spark_listener(sparkContext)
 
     assert gateway._callback_server is not None
+    sparkContext.stop()
 
+def test_start_sentry_streaming_query_listener():
+    sparkContext = SparkContext.getOrCreate()
+    sparkSession = SparkSession(sparkContext)
+
+    gateway = sparkSession.sparkContext._gateway
+    _start_sentry_streaming_query_listener(sparkSession)
+
+    assert gateway._callback_server is not None
+    sparkSession.stop()
 
 @pytest.fixture
 def sentry_listener(monkeypatch):
