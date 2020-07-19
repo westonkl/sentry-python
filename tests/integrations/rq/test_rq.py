@@ -1,3 +1,5 @@
+import sentry_sdk
+
 from sentry_sdk.integrations.rq import RqIntegration
 
 from fakeredis import FakeStrictRedis
@@ -5,6 +7,7 @@ import rq
 
 
 def crashing_job(foo):
+    sentry_sdk.set_tag("custom", "yes")
     1 / 0
 
 
@@ -19,6 +22,8 @@ def test_basic(sentry_init, capture_events):
     worker.work(burst=True)
 
     (event,) = events
+
+    assert event["tags"]["custom"] == "yes"
 
     (exception,) = event["exception"]["values"]
     assert exception["type"] == "ZeroDivisionError"
