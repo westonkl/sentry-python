@@ -241,8 +241,7 @@ def test_passes_parent_sampling_decision_in_sampling_context(
         "sampling_context"
     ]
     assert "parent_sampled" in sampling_context
-    # because we passed in a spy, attribute access requires unwrapping
-    assert sampling_context["parent_sampled"]._mock_wraps is parent_sampling_decision
+    assert sampling_context["parent_sampled"] is parent_sampling_decision
 
 
 def test_passes_custom_samling_context_from_start_transaction_to_traces_sampler(

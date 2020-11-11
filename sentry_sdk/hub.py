@@ -513,12 +513,16 @@ class Hub(with_metaclass(HubMeta)):  # type: ignore
 
         # use traces_sample_rate, traces_sampler, and/or inheritance to make a
         # sampling decision
-        sampling_context = {
-            "transaction_context": transaction.to_json(),
-            "parent_sampled": transaction.parent_sampled,
-        }
-        sampling_context.update(custom_sampling_context)
-        transaction._set_initial_sampling_decision(sampling_context=sampling_context)
+        transaction_context = transaction.to_json()
+        transaction._set_initial_sampling_decision(
+            sampling_context=dict(
+                {
+                    "transaction_context": transaction_context,
+                    "parent_sampled": transaction_context.pop("parent_sampled"),
+                },
+                **custom_sampling_context
+            )
+        )
 
         # we don't bother to keep spans if we already know we're not going to
         # send the transaction
