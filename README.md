@@ -1,6 +1,6 @@
 <p align="center">
     <a href="https://sentry.io" target="_blank" align="center">
-        <img src="./logo.svg" width="280">
+        <img src="./sentry-logo.svg" width="280">
     </a>
 </p>
 
