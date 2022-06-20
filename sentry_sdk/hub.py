@@ -315,7 +315,13 @@ class Hub(with_metaclass(HubMeta)):  # type: ignore
         # type: (...) -> Optional[str]
         """Captures an event. Alias of :py:meth:`sentry_sdk.Client.capture_event`."""
         client, top_scope = self._stack[-1]
+        attach_stacktrace = scope_args.get('attach_stacktrace', False)
+        event['attach_stacktrace'] = attach_stacktrace
+        if 'attach_stacktrace' in scope_args:
+            del scope_args['attach_stacktrace']
         scope = _update_scope(top_scope, scope, scope_args)
+
+
         if client is not None:
             is_transaction = event.get("type") == "transaction"
             rv = client.capture_event(event, hint, scope)

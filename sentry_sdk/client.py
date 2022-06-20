@@ -162,11 +162,14 @@ class _Client(object):
 
             event = event_
 
+        should_attach = (self.options["attach_stacktrace"] and "exception" not in event and "stacktrace" not in event
+            and "threads" not in event)
+
+        force_attach = event.get('attach_stacktrace', False)
+        del event['attach_stacktrace']
+        
         if (
-            self.options["attach_stacktrace"]
-            and "exception" not in event
-            and "stacktrace" not in event
-            and "threads" not in event
+            should_attach or force_attach
         ):
             with capture_internal_exceptions():
                 event["threads"] = {

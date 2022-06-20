@@ -1,8 +1,12 @@
 import uuid
 import random
 import time
+import hashlib
+import sys
+import traceback
 
 from datetime import datetime, timedelta
+from sentry_sdk.performance import check_span_performance
 
 import sentry_sdk
 
@@ -26,7 +30,8 @@ if MYPY:
 class _SpanRecorder(object):
     """Limits the number of spans recorded in a transaction."""
 
-    __slots__ = ("maxlen", "spans")
+    __slots__ = ("maxlen", "spans", "_span_times", "_span_counts", "_span_exceptions", "_span_first", "_span_last", "_spans_involved")
+
 
     def __init__(self, maxlen):
         # type: (int) -> None
@@ -38,12 +43,28 @@ class _SpanRecorder(object):
         self.maxlen = maxlen - 1
         self.spans = []  # type: List[Span]
 
+        self._span_times = {}
+        self._span_counts = {}
+        self._span_exceptions = {}
+        self._span_first = {}
+        self._span_last = {}
+        self._spans_involved = {}
+
     def add(self, span):
         # type: (Span) -> None
         if len(self.spans) > self.maxlen:
             span._span_recorder = None
         else:
             self.spans.append(span)
+
+    def check_performance(self, span):
+        hub = span.hub or sentry_sdk.Hub.current
+        if not hub:
+            return
+        options = hub.client.options["_experiments"].get('performance_issue_creation', False)
+        if not options:
+            return
+        check_span_performance(self, span, options, self._span_counts, self._span_times, self._span_exceptions, self._span_first, self._span_last, self._spans_involved)
 
 
 class Span(object):
@@ -423,8 +444,14 @@ class Span(object):
         except AttributeError:
             self.timestamp = datetime.utcnow()
 
+        span_recorder = (
+            self.containing_transaction and self.containing_transaction._span_recorder
+        )
+        if span_recorder is not None:
+            span_recorder.check_performance(self)
         maybe_create_breadcrumbs_from_span(hub, self)
         return None
+
 
     def to_json(self):
         # type: () -> Dict[str, Any]
@@ -479,6 +506,8 @@ class Span(object):
 class Transaction(Span):
     __slots__ = (
         "name",
+        # Predetermine transaction id so that it can be attached to errors instead of on-send.
+        "transaction_id", 
         "parent_sampled",
         # the sentry portion of the `tracestate` header used to transmit
         # correlation context for server-side dynamic sampling, of the form
@@ -511,6 +540,7 @@ class Transaction(Span):
         Span.__init__(self, **kwargs)
         self.name = name
         self.parent_sampled = parent_sampled
+        self.transaction_id = uuid.uuid4().hex
         # if tracestate isn't inherited and set here, it will get set lazily,
         # either the first time an outgoing request needs it for a header or the
         # first time an event needs it for inclusion in the captured data
@@ -541,6 +571,47 @@ class Transaction(Span):
         # is a getter rather than a regular attribute to avoid having a circular
         # reference.
         return self
+
+    def finalize_performance_issue(self):
+        hub = self.hub or sentry_sdk.Hub.current
+        if not hub:
+            return
+
+        if not self._span_recorder:
+            return
+
+        exceptions = self._span_recorder._span_exceptions.copy().values()
+
+        for exception in exceptions:
+            transaction_error_link_id = uuid.uuid4().hex[16:]
+            hash = exception.get('hash')
+            counts = self._span_recorder._span_counts[hash]
+            times = self._span_recorder._span_times[hash]
+            first = self._span_recorder._span_first[hash]
+            last = self._span_recorder._span_last[hash]
+            spans = self._span_recorder._spans_involved[hash]
+
+            self.set_tag("transaction_error_link_id", transaction_error_link_id)
+            self.set_measurement("extra_span_count_{hash}", counts)
+            self.set_measurement("extra_span_times_{hash}", times)
+
+            with sentry_sdk.push_scope() as scope:
+                scope.span = exception.get('span')
+                self.set_tag("transaction_error_link_id", transaction_error_link_id)
+                scope.set_context('performance_issue', {
+                    "caught_on_span": scope.span.span_id,
+                    "caught_on_transaction": self.transaction_id,
+                    "first_span": first,
+                    "last_span": last,
+                    "spans": spans,
+                    "counts": counts,
+                    "times": times.total_seconds() * 1000,
+                    "op": exception.get('op'),
+                    "desc": exception.get('desc'),
+                })
+                sentry_sdk.capture_exception(exception.get('exception'))
+
+        
 
     def finish(self, hub=None):
         # type: (Optional[sentry_sdk.Hub]) -> Optional[str]
@@ -590,6 +661,8 @@ class Transaction(Span):
             if span.timestamp is not None
         ]
 
+        self.finalize_performance_issue()
+
         # we do this to break the circular reference of transaction -> span
         # recorder -> span -> containing transaction (which is where we started)
         # before either the spans or the transaction goes out of scope and has
@@ -597,6 +670,7 @@ class Transaction(Span):
         self._span_recorder = None
 
         event = {
+            "event_id": self.transaction_id,
             "type": "transaction",
             "transaction": self.name,
             "contexts": {"trace": self.get_trace_context()},

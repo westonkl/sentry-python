@@ -1,4 +1,5 @@
 import base64
+from dataclasses import replace
 import json
 import linecache
 import logging
@@ -334,6 +335,7 @@ def should_hide_frame(frame):
 def iter_stacks(tb):
     # type: (Optional[TracebackType]) -> Iterator[TracebackType]
     tb_ = tb  # type: Optional[TracebackType]
+
     while tb_ is not None:
         if not should_hide_frame(tb_.tb_frame):
             yield tb_
@@ -510,6 +512,20 @@ def serialize_frame(frame, tb_lineno=None, with_locals=True):
 
     return rv
 
+def serialize_frame_summary(frame_summary):
+    # 'filename', 'line', 'lineno', 'locals', 'name'
+
+    rv = {
+        "filename": frame_summary.filename,
+        "abs_path": frame_summary.filename,
+        "function": frame_summary.name,
+        "module": None,
+        "lineno": frame_summary.lineno,
+        "pre_context": None,
+        "context_line": None,
+        "post_context": None,
+    } 
+    return rv
 
 def current_stacktrace(with_locals=True):
     # type: (bool) -> Any
@@ -567,6 +583,10 @@ def single_exception_from_error_tuple(
         "value": safe_str(exc_value),
         "mechanism": mechanism,
     }
+
+    if hasattr(exc_value, 'current_st'):
+        rv["stacktrace"] = exc_value.current_st
+        return rv
 
     if frames:
         rv["stacktrace"] = {"frames": frames}
@@ -631,7 +651,6 @@ def exceptions_from_error_tuple(
         )
 
     rv.reverse()
-
     return rv
 
 
