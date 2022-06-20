@@ -30,7 +30,7 @@ if MYPY:
 class _SpanRecorder(object):
     """Limits the number of spans recorded in a transaction."""
 
-    __slots__ = ("maxlen", "spans", "_span_times", "_span_counts", "_span_exceptions", "_span_first", "_span_last", "_spans_involved")
+    __slots__ = ("maxlen", "spans", "_span_times", "_span_counts", "_spans_involved", "_performance_exceptions")
 
 
     def __init__(self, maxlen):
@@ -45,10 +45,8 @@ class _SpanRecorder(object):
 
         self._span_times = {}
         self._span_counts = {}
-        self._span_exceptions = {}
-        self._span_first = {}
-        self._span_last = {}
         self._spans_involved = {}
+        self._performance_exceptions = {}
 
     def add(self, span):
         # type: (Span) -> None
@@ -64,7 +62,7 @@ class _SpanRecorder(object):
         options = hub.client.options["_experiments"].get('performance_issue_creation', False)
         if not options:
             return
-        check_span_performance(self, span, options, self._span_counts, self._span_times, self._span_exceptions, self._span_first, self._span_last, self._spans_involved)
+        check_span_performance(self, span, options, self._span_counts, self._span_times, self._spans_involved, self._performance_exceptions)
 
 
 class Span(object):
@@ -580,15 +578,11 @@ class Transaction(Span):
         if not self._span_recorder:
             return
 
-        exceptions = self._span_recorder._span_exceptions.copy().values()
-
-        for exception in exceptions:
+        for exception in self._span_recorder._performance_exceptions.copy().values():
             transaction_error_link_id = uuid.uuid4().hex[16:]
             hash = exception.get('hash')
             counts = self._span_recorder._span_counts[hash]
             times = self._span_recorder._span_times[hash]
-            first = self._span_recorder._span_first[hash]
-            last = self._span_recorder._span_last[hash]
             spans = self._span_recorder._spans_involved[hash]
 
             self.set_tag("transaction_error_link_id", transaction_error_link_id)
@@ -601,8 +595,6 @@ class Transaction(Span):
                 scope.set_context('performance_issue', {
                     "caught_on_span": scope.span.span_id,
                     "caught_on_transaction": self.transaction_id,
-                    "first_span": first,
-                    "last_span": last,
                     "spans": spans,
                     "counts": counts,
                     "times": times.total_seconds() * 1000,

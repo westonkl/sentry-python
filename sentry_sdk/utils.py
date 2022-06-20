@@ -512,21 +512,6 @@ def serialize_frame(frame, tb_lineno=None, with_locals=True):
 
     return rv
 
-def serialize_frame_summary(frame_summary):
-    # 'filename', 'line', 'lineno', 'locals', 'name'
-
-    rv = {
-        "filename": frame_summary.filename,
-        "abs_path": frame_summary.filename,
-        "function": frame_summary.name,
-        "module": None,
-        "lineno": frame_summary.lineno,
-        "pre_context": None,
-        "context_line": None,
-        "post_context": None,
-    } 
-    return rv
-
 def current_stacktrace(with_locals=True):
     # type: (bool) -> Any
     __tracebackhide__ = True
