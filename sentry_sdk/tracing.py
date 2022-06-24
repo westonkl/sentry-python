@@ -1,8 +1,12 @@
 import uuid
 import random
 import time
+import hashlib
+import sys
+import traceback
 
 from datetime import datetime, timedelta
+from sentry_sdk.performance import analyze_duplicate_spans
 
 import sentry_sdk
 
@@ -423,8 +427,20 @@ class Span(object):
         except AttributeError:
             self.timestamp = datetime.utcnow()
 
+        self.check_performance(self)
+
         maybe_create_breadcrumbs_from_span(hub, self)
         return None
+
+
+    def check_performance(self, span):
+        transaction = self.containing_transaction
+
+        if not transaction:
+            return
+
+        transaction.check_performance_of_span(span)
+
 
     def to_json(self):
         # type: () -> Dict[str, Any]
@@ -488,6 +504,9 @@ class Transaction(Span):
         # tracestate data from other vendors, of the form `dogs=yes,cats=maybe`
         "_third_party_tracestate",
         "_measurements",
+        "_span_times", 
+        "_spans_involved", 
+        "_performance_issues",
     )
 
     def __init__(
@@ -518,6 +537,10 @@ class Transaction(Span):
         self._third_party_tracestate = third_party_tracestate
         self._measurements = {}  # type: Dict[str, Any]
 
+        self._span_durations = {}
+        self._spans_involved = {}
+        self._performance_issues = {}
+
     def __repr__(self):
         # type: () -> str
         return (
@@ -541,6 +564,51 @@ class Transaction(Span):
         # is a getter rather than a regular attribute to avoid having a circular
         # reference.
         return self
+
+    def check_performance_of_span(self, span):
+        hub = self.hub or sentry_sdk.Hub.current
+        client = hub.client
+        options = (client and client.options) or {}
+        performance_options = options.get("_experiments", {}).get('performance_issue_creation', False)
+        if not performance_options:
+            return
+
+        analyze_duplicate_spans(
+            span,
+            performance_options,
+            self._span_durations, 
+            self._spans_involved, 
+            self._performance_issues
+        )
+
+    def finalize_performance_issue(self):
+        for performance_issue in self._performance_issues.values():
+            hash = performance_issue.get('hash')
+            times = self._span_durations[hash]
+            spans = self._spans_involved[hash]
+            counts = len(self._spans_involved[hash])
+
+            self.set_tag("has_performance_issue", True)
+            self.set_measurement("extra_span_count_{hash}", counts)
+            self.set_measurement("extra_span_times_{hash}", times)
+
+            with sentry_sdk.push_scope() as scope:
+                scope.span = performance_issue.get('span')
+                
+                # Experimental event tag set for routing to experimental dsn transport.
+                scope.set_tag("_experimental_event", True) 
+
+                scope.set_context('performance_issue', {
+                    "op": performance_issue.get('op'),
+                    "desc": performance_issue.get('desc'),
+                    "hash": hash,
+                    "spans": spans,
+                    "times": times.total_seconds() * 1000,
+                    "counts": counts,
+                })
+                sentry_sdk.capture_exception(performance_issue.get('exception'))
+
+        
 
     def finish(self, hub=None):
         # type: (Optional[sentry_sdk.Hub]) -> Optional[str]
@@ -589,6 +657,8 @@ class Transaction(Span):
             for span in self._span_recorder.spans
             if span.timestamp is not None
         ]
+
+        self.finalize_performance_issue()
 
         # we do this to break the circular reference of transaction -> span
         # recorder -> span -> containing transaction (which is where we started)

@@ -568,6 +568,10 @@ def single_exception_from_error_tuple(
         "mechanism": mechanism,
     }
 
+    if hasattr(exc_value, 'performance_stacktrace'):
+        rv["stacktrace"] = exc_value.performance_stacktrace
+        return rv
+
     if frames:
         rv["stacktrace"] = {"frames": frames}
 
