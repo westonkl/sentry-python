@@ -504,7 +504,7 @@ class Transaction(Span):
         # tracestate data from other vendors, of the form `dogs=yes,cats=maybe`
         "_third_party_tracestate",
         "_measurements",
-        "_span_times", 
+        "_span_durations", 
         "_spans_involved", 
         "_performance_issues",
     )
