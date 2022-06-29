@@ -588,7 +588,9 @@ class Transaction(Span):
             spans = self._spans_involved[hash]
             counts = len(self._spans_involved[hash])
 
+
             self.set_tag("has_performance_issue", True)
+            self.set_tag("performance_issue.extra_spans", hash)
             self.set_measurement("extra_span_count_{hash}", counts)
             self.set_measurement("extra_span_times_{hash}", times)
 
@@ -597,6 +599,7 @@ class Transaction(Span):
                 
                 # Experimental event tag set for routing to experimental dsn transport.
                 scope.set_tag("_experimental_event", True) 
+                scope.set_tag("performance_issue.extra_spans", hash)
 
                 scope.set_context('performance_issue', {
                     "op": performance_issue.get('op'),
