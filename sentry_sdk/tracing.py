@@ -219,7 +219,7 @@ class Span(object):
         # type: (...) -> Transaction
         """
         Create a Transaction with the given params, then add in data pulled from
-        the 'sentry-trace' and 'tracestate' headers from the environ (if any)
+        the 'sentry-trace', 'baggage' and 'tracestate' headers from the environ (if any)
         before returning the Transaction.
 
         This is different from `continue_from_headers` in that it assumes header
@@ -242,7 +242,7 @@ class Span(object):
         # type: (...) -> Transaction
         """
         Create a transaction with the given params (including any data pulled from
-        the 'sentry-trace' and 'tracestate' headers).
+        the 'sentry-trace', 'baggage' and 'tracestate' headers).
         """
         # TODO move this to the Transaction class
         if cls is Span:
@@ -251,7 +251,17 @@ class Span(object):
                 "instead of Span.continue_from_headers."
             )
 
-        kwargs.update(extract_sentrytrace_data(headers.get("sentry-trace")))
+        # TODO-neel move away from this kwargs stuff, it's confusing and opaque
+        # make more explicit
+        baggage = Baggage.from_incoming_header(headers.get("baggage"))
+        kwargs.update({"baggage": baggage})
+
+        sentrytrace_kwargs = extract_sentrytrace_data(headers.get("sentry-trace"))
+
+        if sentrytrace_kwargs is not None:
+            kwargs.update(sentrytrace_kwargs)
+            baggage.freeze
+
         kwargs.update(extract_tracestate_data(headers.get("tracestate")))
 
         transaction = Transaction(**kwargs)
@@ -262,7 +272,7 @@ class Span(object):
     def iter_headers(self):
         # type: () -> Iterator[Tuple[str, str]]
         """
-        Creates a generator which returns the span's `sentry-trace` and
+        Creates a generator which returns the span's `sentry-trace`, `baggage` and
         `tracestate` headers.
 
         If the span's containing transaction doesn't yet have a
@@ -277,6 +287,9 @@ class Span(object):
         # behind a flag
         if tracestate:
             yield "tracestate", tracestate
+
+        if self.containing_transaction and self.containing_transaction._baggage:
+            yield "baggage", self.containing_transaction._baggage.serialize()
 
     @classmethod
     def from_traceparent(
@@ -476,7 +489,7 @@ class Span(object):
             "parent_span_id": self.parent_span_id,
             "op": self.op,
             "description": self.description,
-        }
+        }  # type: Dict[str, Any]
         if self.status:
             rv["status"] = self.status
 
@@ -488,6 +501,12 @@ class Span(object):
 
         if sentry_tracestate:
             rv["tracestate"] = sentry_tracestate
+
+        # TODO-neel populate fresh if head SDK
+        if self.containing_transaction and self.containing_transaction._baggage:
+            rv[
+                "dynamic_sampling_context"
+            ] = self.containing_transaction._baggage.dynamic_sampling_context()
 
         return rv
 
@@ -504,9 +523,10 @@ class Transaction(Span):
         # tracestate data from other vendors, of the form `dogs=yes,cats=maybe`
         "_third_party_tracestate",
         "_measurements",
-        "_span_durations", 
-        "_spans_involved", 
+        "_span_durations",
+        "_spans_involved",
         "_performance_issues",
+        "_baggage",
     )
 
     def __init__(
@@ -515,6 +535,7 @@ class Transaction(Span):
         parent_sampled=None,  # type: Optional[bool]
         sentry_tracestate=None,  # type: Optional[str]
         third_party_tracestate=None,  # type: Optional[str]
+        baggage=None,  # type: Optional[Baggage]
         **kwargs  # type: Any
     ):
         # type: (...) -> None
@@ -536,6 +557,7 @@ class Transaction(Span):
         self._sentry_tracestate = sentry_tracestate
         self._third_party_tracestate = third_party_tracestate
         self._measurements = {}  # type: Dict[str, Any]
+        self._baggage = baggage
 
         self._span_durations = {}
         self._spans_involved = {}
@@ -807,6 +829,7 @@ class Transaction(Span):
 # Circular imports
 
 from sentry_sdk.tracing_utils import (
+    Baggage,
     EnvironHeaders,
     compute_tracestate_entry,
     extract_sentrytrace_data,
