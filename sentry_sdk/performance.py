@@ -33,11 +33,11 @@ def analyze_duplicate_spans(span, options, span_durations, spans_involved, perfo
     spans_involved[hash] += [span.span_id]
     span_counts = len(spans_involved[hash])
 
-    performance_stacktrace = current_stacktrace(with_locals=False)
 
     if not performance_exceptions.get(hash, False):
         if (span_counts > count_threshold and span_durations[hash] > timedelta(milliseconds=time_threshold)):
             exception_string = f"Extraneous Spans: {op} - {desc[:48]}... | {hash[:16]}"
+            performance_stacktrace = current_stacktrace(with_locals=False)
             try:
                 raise Exception(exception_string)
             except Exception as e:
