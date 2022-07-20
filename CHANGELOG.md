@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.2
+
+### Various fixes & improvements
+
+- feat(transactions): Transaction Source (#1490) by @antonpirker
+- Removed (unused) sentry_timestamp header (#1494) by @antonpirker
+
+## 1.7.1
+
+### Various fixes & improvements
+
+- Skip malformed baggage items (#1491) by @robyoung
+
 ## 1.7.0
 
 ### Various fixes & improvements
