@@ -83,9 +83,10 @@ def test_extract_context_sentry_trace_header_baggage():
     Extract should return context that has baggage in it and also a NoopSpan with span_id and trace_id.
     """
     baggage_header = (
-        "other-vendor-value-1=foo;bar;baz, sentry-trace_id=771a43a4192642f0b136d5159a501700, "
-        "sentry-public_key=49d0f7386ad645858ae85020e393bef3, sentry-sample_rate=0.01337, "
-        "sentry-user_id=Am%C3%A9lie, other-vendor-value-2=foo;bar;"
+        "other-vendor-value-1=foo;bar;baz,sentry-trace_id=771a43a4192642f0b136d5159a501700,"
+        "sentry-public_key=49d0f7386ad645858ae85020e393bef3,sentry-sample_rate=0.01337,"
+        "sentry-user_id=Am%C3%A9lie,other-vendor-value-2=foo;bar;,"
+        "sentry-transaction=HTTP%20POST"
     )
 
     carrier = None
@@ -109,7 +110,9 @@ def test_extract_context_sentry_trace_header_baggage():
     assert modified_context[SENTRY_BAGGAGE_KEY].serialize() == (
         "sentry-trace_id=771a43a4192642f0b136d5159a501700,"
         "sentry-public_key=49d0f7386ad645858ae85020e393bef3,"
-        "sentry-sample_rate=0.01337,sentry-user_id=Am%C3%A9lie"
+        "sentry-sample_rate=0.01337,"
+        "sentry-user_id=Am%C3%A9lie,"
+        "sentry-transaction=HTTP%20POST"
     )
 
     span_context = get_current_span(modified_context).get_span_context()
@@ -221,6 +224,7 @@ def test_inject_sentry_span_baggage():
         "sentry-public_key": "49d0f7386ad645858ae85020e393bef3",
         "sentry-sample_rate": 0.01337,
         "sentry-user_id": "Amélie",
+        "sentry-transaction": "HTTP POST",
     }
     baggage = Baggage(sentry_items=sentry_items)
     sentry_span.containing_transaction.get_baggage = MagicMock(return_value=baggage)

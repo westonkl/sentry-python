@@ -150,6 +150,7 @@ def test_get_trace_data_with_sentry_trace_and_baggage():
         "sentry-trace_id=771a43a4192642f0b136d5159a501700,"
         "sentry-public_key=49d0f7386ad645858ae85020e393bef3,"
         "sentry-sample_rate=0.01337,sentry-user_id=Am%C3%A9lie"
+        "sentry-transaction=HTTP%20POST"
     )
 
     with mock.patch(
