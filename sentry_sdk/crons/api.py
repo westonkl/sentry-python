@@ -35,8 +35,6 @@ def _create_checkin_event(
         "release": options["release"],
     }
 
-    print("sentry_sdk.crons.api._create_checkin_event: ", checkin)
-
     return checkin
 
 
